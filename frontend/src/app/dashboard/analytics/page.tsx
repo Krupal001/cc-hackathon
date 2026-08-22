@@ -19,12 +19,41 @@ export default function AnalyticsPage() {
       const data = await api.listInstallations();
       setInstallations(data.installations);
 
+      // Fetch insights from all installations in parallel, then aggregate
       if (data.installations.length > 0) {
-        const insightData = await api.getInsights(data.installations[0].installation_id);
-        setInsights(insightData.insights);
+        const allInsights = await Promise.all(
+          data.installations.map((inst: any) =>
+            api.getInsights(inst.installation_id).catch(() => ({ insights: [] }))
+          )
+        );
+
+        // Aggregate by window (7d, 30d, 90d)
+        const aggregated: Record<string, any> = {};
+        for (const result of allInsights) {
+          for (const insight of result.insights) {
+            const w = (insight as any).window;
+            if (!aggregated[w]) {
+              aggregated[w] = {
+                window: w,
+                total_findings: 0,
+                disputed_findings: 0,
+                resolved_findings: 0,
+                quiet_drops: 0,
+              };
+            }
+            aggregated[w].total_findings += (insight as any).total_findings || 0;
+            aggregated[w].disputed_findings += (insight as any).disputed_findings || 0;
+            aggregated[w].resolved_findings += (insight as any).resolved_findings || 0;
+            aggregated[w].quiet_drops += (insight as any).quiet_drops || 0;
+          }
+        }
+        setInsights(Object.values(aggregated));
+      } else {
+        setInsights([]);
       }
-    } catch (err) {
-      setError("Failed to load analytics. Is the backend running?");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Failed to load analytics: ${msg}`);
     } finally {
       setLoading(false);
       setRefreshing(false);

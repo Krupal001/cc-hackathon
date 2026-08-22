@@ -167,6 +167,9 @@ async def _handle_review_comment(payload: dict) -> dict:
 async def _handle_installation(payload: dict, action: str) -> dict:
     installation = payload["installation"]
     installation_id = installation["id"]
+    sender = payload.get("sender", {})
+    github_user_id = sender.get("id")
+    github_user_login = sender.get("login")
 
     if action == "created":
         repos = payload.get("repositories", [])
@@ -180,12 +183,18 @@ async def _handle_installation(payload: dict, action: str) -> dict:
                         Installation.repo_full_name == repo["full_name"],
                     )
                 )
-                if not existing.scalar_one_or_none():
+                record = existing.scalar_one_or_none()
+                if record:
+                    record.github_user_id = github_user_id
+                    record.github_user_login = github_user_login
+                else:
                     session.add(
                         Installation(
                             installation_id=installation_id,
                             repo_full_name=repo["full_name"],
                             config={},
+                            github_user_id=github_user_id,
+                            github_user_login=github_user_login,
                         )
                     )
             await session.commit()
@@ -215,6 +224,9 @@ async def _handle_installation_repositories(payload: dict, action: str) -> dict:
 
     if action == "added":
         repos = payload.get("repositories_added", [])
+        sender = payload.get("sender", {})
+        github_user_id = sender.get("id")
+        github_user_login = sender.get("login")
         async with async_session_factory() as session:
             from sqlalchemy import select
 
@@ -225,12 +237,18 @@ async def _handle_installation_repositories(payload: dict, action: str) -> dict:
                         Installation.repo_full_name == repo["full_name"],
                     )
                 )
-                if not existing.scalar_one_or_none():
+                record = existing.scalar_one_or_none()
+                if record:
+                    record.github_user_id = github_user_id
+                    record.github_user_login = github_user_login
+                else:
                     session.add(
                         Installation(
                             installation_id=installation_id,
                             repo_full_name=repo["full_name"],
                             config={},
+                            github_user_id=github_user_id,
+                            github_user_login=github_user_login,
                         )
                     )
             await session.commit()

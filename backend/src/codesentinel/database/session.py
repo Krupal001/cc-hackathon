@@ -60,6 +60,24 @@ async def init_db() -> bool:
         async with engine.begin() as conn:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await conn.run_sync(Base.metadata.create_all)
+            await conn.execute(
+                text(
+                    "ALTER TABLE installations "
+                    "ADD COLUMN IF NOT EXISTS github_user_id BIGINT"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE installations "
+                    "ADD COLUMN IF NOT EXISTS github_user_login VARCHAR(255)"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_installations_github_user_id "
+                    "ON installations (github_user_id)"
+                )
+            )
         logger.info("database_initialized")
         return True
     except Exception as e:

@@ -35,6 +35,8 @@ class Installation(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     installation_id = Column(BigInteger, nullable=False, index=True)
     repo_full_name = Column(String(255), nullable=False, index=True)
+    github_user_id = Column(BigInteger, nullable=True, index=True)
+    github_user_login = Column(String(255), nullable=True)
     config = Column(JSONB, default=dict)
     model_id = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=utcnow)

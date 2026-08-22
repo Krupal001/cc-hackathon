@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from codesentinel.api.deps import get_github_user_id
 from codesentinel.database.models import Installation, InstallationSettings, Review
 from codesentinel.database.session import get_db
 
@@ -15,9 +16,13 @@ router = APIRouter(prefix="/api/installations", tags=["installations"])
 @router.get("")
 async def list_installations(
     db: AsyncSession = Depends(get_db),
+    github_user_id: int | None = Depends(get_github_user_id),
 ) -> dict[str, Any]:
-    """List all installations."""
-    result = await db.execute(select(Installation).order_by(desc(Installation.updated_at)))
+    """List installations, filtered by the authenticated user."""
+    query = select(Installation).order_by(desc(Installation.updated_at))
+    if github_user_id is not None:
+        query = query.where(Installation.github_user_id == github_user_id)
+    result = await db.execute(query)
     installations = result.scalars().all()
     return {
         "installations": [

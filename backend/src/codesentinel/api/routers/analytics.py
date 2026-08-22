@@ -2,22 +2,41 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from codesentinel.database.models import InstallationFPInsight, FindingDisposition
+from codesentinel.api.deps import get_github_user_id
+from codesentinel.database.models import InstallationFPInsight, FindingDisposition, Installation
 from codesentinel.database.session import get_db
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+
+
+async def _verify_installation_ownership(
+    db: AsyncSession, installation_id: int, github_user_id: int | None
+) -> None:
+    """Verify that the installation belongs to the authenticated user."""
+    if github_user_id is None:
+        return
+    result = await db.execute(
+        select(Installation).where(
+            Installation.installation_id == installation_id,
+            Installation.github_user_id == github_user_id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Access denied to this installation")
 
 
 @router.get("/{installation_id}/insights")
 async def get_insights(
     installation_id: int,
     db: AsyncSession = Depends(get_db),
+    github_user_id: int | None = Depends(get_github_user_id),
 ) -> dict[str, Any]:
     """Get FP insights for an installation."""
+    await _verify_installation_ownership(db, installation_id, github_user_id)
     result = await db.execute(
         select(InstallationFPInsight)
         .where(InstallationFPInsight.installation_id == installation_id)
@@ -46,8 +65,10 @@ async def get_dispositions(
     repo: str | None = Query(None),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
+    github_user_id: int | None = Depends(get_github_user_id),
 ) -> dict[str, Any]:
     """Get finding dispositions for an installation."""
+    await _verify_installation_ownership(db, installation_id, github_user_id)
     query = (
         select(FindingDisposition)
         .where(FindingDisposition.installation_id == installation_id)

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from codesentinel.api.deps import get_github_user_id
 from codesentinel.database.models import Review, Installation
 from codesentinel.database.session import get_db
 
@@ -19,10 +20,19 @@ async def list_reviews(
     limit: int = Query(50, le=200),
     offset: int = Query(0),
     db: AsyncSession = Depends(get_db),
+    github_user_id: int | None = Depends(get_github_user_id),
 ) -> dict[str, Any]:
-    """List reviews with optional filters."""
-    query = select(Review).order_by(desc(Review.created_at)).limit(limit).offset(offset)
+    """List reviews with optional filters, scoped to the authenticated user."""
+    query = (
+        select(Review)
+        .join(Installation, Review.installation_id == Installation.installation_id)
+        .order_by(desc(Review.created_at))
+        .limit(limit)
+        .offset(offset)
+    )
 
+    if github_user_id is not None:
+        query = query.where(Installation.github_user_id == github_user_id)
     if repo:
         query = query.where(Review.repo_full_name == repo)
     if status:
@@ -31,7 +41,12 @@ async def list_reviews(
     result = await db.execute(query)
     reviews = result.scalars().all()
 
-    count_query = select(func.count(Review.id))
+    count_query = (
+        select(func.count(Review.id))
+        .join(Installation, Review.installation_id == Installation.installation_id)
+    )
+    if github_user_id is not None:
+        count_query = count_query.where(Installation.github_user_id == github_user_id)
     if repo:
         count_query = count_query.where(Review.repo_full_name == repo)
     if status:
