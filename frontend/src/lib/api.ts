@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = "/api/backend";
 
 export interface Finding {
   file: string;
@@ -61,10 +61,10 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       cache: "no-store",
     });
   } catch (e) {
-    throw new Error(`Network error calling ${url}: ${e}`);
+    throw new Error(`Network error (proxy → ${url}): ${e}`);
   }
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText} (${url})`);
+    throw new Error(`${res.status} ${res.statusText} (proxy → ${url})`);
   }
   return res.json();
 }
