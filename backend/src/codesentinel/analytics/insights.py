@@ -6,6 +6,7 @@ from sqlalchemy import text
 from structlog import get_logger
 
 from codesentinel.config.settings import get_settings
+from codesentinel.database.models import utcnow
 from codesentinel.database.session import async_session_factory
 
 logger = get_logger()
@@ -15,7 +16,7 @@ _settings = get_settings()
 async def run_insight_rollup() -> dict:
     """Compute FP insight rollups for all installations."""
     windows = ["7d", "30d", "90d"]
-    now = datetime.now(timezone.utc)
+    now = utcnow()
     results = {"installations": 0, "rollups": 0}
 
     async with async_session_factory() as session:

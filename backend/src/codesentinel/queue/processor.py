@@ -12,7 +12,7 @@ from structlog import get_logger
 
 from codesentinel.agents.pipeline import run_review
 from codesentinel.config.settings import get_settings
-from codesentinel.database.models import Review, ReviewJob
+from codesentinel.database.models import Review, ReviewJob, utcnow
 from codesentinel.database.session import async_session_factory
 from codesentinel.github.auth import get_github_auth
 from codesentinel.github.client import GitHubClient
@@ -392,7 +392,7 @@ async def _store_review_result(
             review.enabled_agent_count = enabled_agent_count
             review.review_mode = review_mode
             review.error_message = error_message
-            review.updated_at = datetime.now(timezone.utc)
+            review.updated_at = utcnow()
         else:
             review = Review(
                 installation_id=installation_id,

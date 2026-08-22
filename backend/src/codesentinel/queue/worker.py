@@ -16,7 +16,7 @@ from sqlalchemy import text, select
 from structlog import get_logger
 
 from codesentinel.config.settings import get_settings
-from codesentinel.database.models import ReviewJob
+from codesentinel.database.models import ReviewJob, utcnow
 from codesentinel.database.session import async_session_factory, engine
 from codesentinel.queue.processor import process_review_job
 
@@ -38,7 +38,7 @@ def _is_throttle_error(error: Exception) -> bool:
 async def claim_jobs(concurrency: int) -> list[ReviewJob]:
     """Claim queued jobs using FOR UPDATE SKIP LOCKED."""
     lock_seconds = _settings.review_lock_seconds
-    now = datetime.now(timezone.utc)
+    now = utcnow()
 
     async with async_session_factory() as session:
         result = await session.execute(
@@ -93,7 +93,7 @@ async def complete_job(job_id: int) -> None:
             text(
                 "UPDATE review_jobs SET status = 'done', updated_at = :now WHERE id = :id"
             ),
-            {"now": datetime.now(timezone.utc), "id": job_id},
+            {"now": utcnow(), "id": job_id},
         )
         await session.commit()
 
@@ -101,7 +101,7 @@ async def complete_job(job_id: int) -> None:
 async def retry_job(job_id: int, error: str) -> None:
     """Re-queue a job for retry with exponential backoff."""
     backoff = _settings.review_backoff_base_seconds * (2 ** (1 - 1))
-    next_attempt = datetime.now(timezone.utc) + timedelta(seconds=backoff)
+    next_attempt = utcnow() + timedelta(seconds=backoff)
 
     async with async_session_factory() as session:
         await session.execute(
@@ -118,7 +118,7 @@ async def retry_job(job_id: int, error: str) -> None:
             {
                 "next": next_attempt,
                 "error": error[:500],
-                "now": datetime.now(timezone.utc),
+                "now": utcnow(),
                 "id": job_id,
             },
         )
@@ -140,7 +140,7 @@ async def kill_job(job_id: int, error: str) -> None:
             """),
             {
                 "error": error[:500],
-                "now": datetime.now(timezone.utc),
+                "now": utcnow(),
                 "id": job_id,
             },
         )

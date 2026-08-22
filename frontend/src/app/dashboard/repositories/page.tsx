@@ -2,18 +2,11 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
+import type { Installation } from "@/lib/api";
 import { Loader2, RefreshCw, AlertTriangle, Search, ExternalLink, GitBranch, Clock } from "lucide-react";
 
-interface Repository {
-  installation_id: number;
-  repo_full_name: string;
-  model_id: string | null;
-  reviewCount?: number;
-  lastReviewedAt?: string | null;
-}
-
 export default function RepositoriesPage() {
-  const [installations, setInstallations] = useState<Repository[]>([]);
+  const [installations, setInstallations] = useState<Installation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -26,27 +19,7 @@ export default function RepositoriesPage() {
     setError(null);
     try {
       const data = await api.listInstallations();
-      
-      // Fetch review counts for each repo
-      const reposWithStats = await Promise.all(
-        data.installations.map(async (inst: Repository) => {
-          try {
-            const reviews = await api.listReviews({ 
-              repo: inst.repo_full_name,
-              limit: 1 
-            });
-            return {
-              ...inst,
-              reviewCount: reviews.total || 0,
-              lastReviewedAt: reviews.reviews[0]?.created_at || null,
-            };
-          } catch {
-            return { ...inst, reviewCount: 0, lastReviewedAt: null };
-          }
-        })
-      );
-      
-      setInstallations(reposWithStats);
+      setInstallations(data.installations || []);
     } catch (err) {
       setError("Failed to load repositories. Is the backend running?");
     } finally {
@@ -67,12 +40,8 @@ export default function RepositoriesPage() {
       result = result.filter((r) => r.repo_full_name.toLowerCase().includes(q));
     }
 
-    if (statusFilter === "no-reviews") {
-      result = result.filter((r) => (r.reviewCount || 0) === 0);
-    }
-
     return result;
-  }, [installations, search, statusFilter]);
+  }, [installations, search]);
 
   const clearFilters = useCallback(() => {
     setSearch("");
@@ -138,15 +107,6 @@ export default function RepositoriesPage() {
             className="w-52 rounded-md border border-border bg-card py-1.5 pl-8 pr-3 text-sm placeholder-muted-foreground focus:border-primary focus:outline-none"
           />
         </div>
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-md border border-border bg-card px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
-        >
-          <option value="all">All</option>
-          <option value="no-reviews">No reviews yet</option>
-        </select>
       </div>
 
       {installations.length === 0 ? (
@@ -191,9 +151,8 @@ export default function RepositoriesPage() {
   );
 }
 
-function RepoCard({ repo }: { repo: Repository }) {
+function RepoCard({ repo }: { repo: Installation }) {
   const githubUrl = `https://github.com/${repo.repo_full_name}`;
-  const reviewCount = repo.reviewCount || 0;
 
   return (
     <div className="rounded-lg border border-border bg-card p-5 transition-colors hover:border-primary/50">
@@ -224,33 +183,17 @@ function RepoCard({ repo }: { repo: Repository }) {
 
       <div className="mb-3 border-t border-border/50" />
 
-      {reviewCount === 0 ? (
-        <div className="flex items-center gap-2 py-1">
-          <Clock size={13} className="text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">
-            No reviews yet — open a PR to trigger the first one.
-          </span>
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Reviews</span>
-            <span className="text-xs font-medium tabular-nums">{reviewCount}</span>
-          </div>
-          {repo.lastReviewedAt && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Last review</span>
-              <span className="text-xs text-muted-foreground">
-                {new Date(repo.lastReviewedAt).toLocaleDateString()}
-              </span>
-            </div>
-          )}
-          <div className="mt-2 flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-            <span className="text-xs text-green-500">Active</span>
-          </div>
-        </div>
-      )}
+      <div className="flex items-center gap-2 py-1">
+        <Clock size={13} className="text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">
+          Connected and ready for reviews.
+        </span>
+      </div>
+
+      <div className="mt-2 flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+        <span className="text-xs text-green-500">Active</span>
+      </div>
     </div>
   );
 }
