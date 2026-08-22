@@ -50,6 +50,8 @@ async def handle_webhook_event(
         return await _handle_review_comment(payload)
     elif event == "installation":
         return await _handle_installation(payload, action)
+    elif event == "installation_repositories":
+        return await _handle_installation_repositories(payload, action)
     elif event == "check_run" and action == "rerequested":
         return await _handle_check_rerequest(payload)
     else:
@@ -203,6 +205,54 @@ async def _handle_installation(payload: dict, action: str) -> dict:
             )
             await session.commit()
         return {"status": "uninstalled"}
+
+    return {"status": "ignored"}
+
+
+async def _handle_installation_repositories(payload: dict, action: str) -> dict:
+    installation = payload["installation"]
+    installation_id = installation["id"]
+
+    if action == "added":
+        repos = payload.get("repositories_added", [])
+        async with async_session_factory() as session:
+            from sqlalchemy import select
+
+            for repo in repos:
+                existing = await session.execute(
+                    select(Installation).where(
+                        Installation.installation_id == installation_id,
+                        Installation.repo_full_name == repo["full_name"],
+                    )
+                )
+                if not existing.scalar_one_or_none():
+                    session.add(
+                        Installation(
+                            installation_id=installation_id,
+                            repo_full_name=repo["full_name"],
+                            config={},
+                        )
+                    )
+            await session.commit()
+        logger.info(
+            "repos_added", installation_id=installation_id, repos=len(repos)
+        )
+        return {"status": "repos_added", "count": len(repos)}
+
+    elif action == "removed":
+        repos = payload.get("repositories_removed", [])
+        async with async_session_factory() as session:
+            from sqlalchemy import delete
+
+            for repo in repos:
+                await session.execute(
+                    delete(Installation).where(
+                        Installation.installation_id == installation_id,
+                        Installation.repo_full_name == repo["full_name"],
+                    )
+                )
+            await session.commit()
+        return {"status": "repos_removed", "count": len(repos)}
 
     return {"status": "ignored"}
 
