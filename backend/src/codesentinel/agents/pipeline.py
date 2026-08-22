@@ -271,10 +271,10 @@ async def _run_agent(
     llm = create_llm(temperature=0)
 
     prompt = prompt_template.format(
-        pr_title=state.get("pr_title", ""),
-        pr_body=state.get("pr_body", "")[:2000],
-        diff=state["diff"][: _settings.max_context_kb * 1024],
-        conventions=state.get("conventions", "")[:4000] or "No conventions file found.",
+        pr_title=state.get("pr_title") or "",
+        pr_body=(state.get("pr_body") or "")[:2000],
+        diff=(state.get("diff") or "")[: _settings.max_context_kb * 1024],
+        conventions=(state.get("conventions") or "")[:4000] or "No conventions file found.",
     )
 
     agent = create_react_agent(llm, tools)
