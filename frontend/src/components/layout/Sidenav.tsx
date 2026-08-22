@@ -64,7 +64,7 @@ export function Sidenav() {
         <a
           href={
             process.env.NEXT_PUBLIC_GITHUB_APP_URL ||
-            "https://github.com/apps/code-sentinal/installations/new"
+            "https://github.com/apps/review-x/installations/new"
           }
           target="_blank"
           rel="noopener noreferrer"
