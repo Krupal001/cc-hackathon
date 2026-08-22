@@ -31,6 +31,8 @@ export default function RepositoriesPage() {
 
   useEffect(() => {
     fetchData();
+    const interval = setInterval(() => fetchData(true), 10000);
+    return () => clearInterval(interval);
   }, [fetchData]);
 
   const filtered = useMemo(() => {
