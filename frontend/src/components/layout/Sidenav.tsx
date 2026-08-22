@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { GitBranch, Home, Settings, BarChart3, Github, Shield, LogOut } from "lucide-react";
+import { GitBranch, Home, Settings, BarChart3, Github, Shield, LogOut, FolderGit2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: Home },
   { label: "Reviews", href: "/dashboard/reviews", icon: GitBranch },
+  { label: "Repositories", href: "/dashboard/repositories", icon: FolderGit2 },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
