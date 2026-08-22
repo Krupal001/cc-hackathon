@@ -23,6 +23,7 @@ async def list_reviews(
     github_user_id: int | None = Depends(get_github_user_id),
 ) -> dict[str, Any]:
     """List reviews with optional filters, scoped to the authenticated user."""
+    from sqlalchemy import or_
     query = (
         select(Review)
         .join(Installation, Review.installation_id == Installation.installation_id)
@@ -32,7 +33,12 @@ async def list_reviews(
     )
 
     if github_user_id is not None:
-        query = query.where(Installation.github_user_id == github_user_id)
+        query = query.where(
+            or_(
+                Installation.github_user_id == github_user_id,
+                Installation.github_user_id.is_(None),
+            )
+        )
     if repo:
         query = query.where(Review.repo_full_name == repo)
     if status:
@@ -46,7 +52,12 @@ async def list_reviews(
         .join(Installation, Review.installation_id == Installation.installation_id)
     )
     if github_user_id is not None:
-        count_query = count_query.where(Installation.github_user_id == github_user_id)
+        count_query = count_query.where(
+            or_(
+                Installation.github_user_id == github_user_id,
+                Installation.github_user_id.is_(None),
+            )
+        )
     if repo:
         count_query = count_query.where(Review.repo_full_name == repo)
     if status:

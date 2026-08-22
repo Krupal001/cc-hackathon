@@ -19,9 +19,15 @@ async def list_installations(
     github_user_id: int | None = Depends(get_github_user_id),
 ) -> dict[str, Any]:
     """List installations, filtered by the authenticated user."""
+    from sqlalchemy import or_
     query = select(Installation).order_by(desc(Installation.updated_at))
     if github_user_id is not None:
-        query = query.where(Installation.github_user_id == github_user_id)
+        query = query.where(
+            or_(
+                Installation.github_user_id == github_user_id,
+                Installation.github_user_id.is_(None),
+            )
+        )
     result = await db.execute(query)
     installations = result.scalars().all()
     return {

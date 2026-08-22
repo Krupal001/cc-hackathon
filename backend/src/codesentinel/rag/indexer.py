@@ -41,10 +41,10 @@ async def semantic_search(
             result = await conn.execute(
                 text("""
                     SELECT file_path, content_chunk,
-                           1 - (embedding::vector <=> :vector::vector) as similarity
+                           1 - (embedding <=> CAST(:vector AS vector)) as similarity
                     FROM codebase_embeddings
                     WHERE repo_full_name = :repo AND commit_sha = :ref
-                    ORDER BY embedding::vector <=> :vector::vector
+                    ORDER BY embedding <=> CAST(:vector AS vector)
                     LIMIT :top_k
                 """),
                 {
@@ -146,7 +146,7 @@ async def index_codebase(
                                 INSERT INTO codebase_embeddings
                                     (repo_full_name, commit_sha, file_path,
                                      content_chunk, chunk_index, embedding)
-                                VALUES (:repo, :ref, :path, :chunk, :idx, :emb::vector)
+                                VALUES (:repo, :ref, :path, :chunk, :idx, CAST(:emb AS vector))
                             """),
                             {
                                 "repo": repo_full_name,
