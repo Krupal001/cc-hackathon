@@ -100,6 +100,7 @@ def create_llm(
     model: str | None = None,
     temperature: float = 0,
     reasoning_effort: str | None = None,
+    with_tools: bool = False,
 ) -> Any:
     provider = provider or _settings.llm_provider
     model = model or _settings.llm_model
@@ -112,9 +113,8 @@ def create_llm(
         }
 
         if _is_reasoning_model(model):
-            kwargs["model_kwargs"] = {
-                "reasoning_effort": reasoning_effort or _settings.reasoning_effort,
-            }
+            effective_effort = "none" if with_tools else (reasoning_effort or _settings.reasoning_effort)
+            kwargs["reasoning_effort"] = effective_effort
         else:
             kwargs["temperature"] = temperature
 
@@ -268,7 +268,7 @@ async def _run_agent(
     tools: list[BaseTool],
 ) -> list[Finding]:
     """Run a single ReAct agent with tools."""
-    llm = create_llm(temperature=0)
+    llm = create_llm(temperature=0, with_tools=True)
 
     prompt = prompt_template.format(
         pr_title=state.get("pr_title") or "",
@@ -481,7 +481,7 @@ async def generative_node(state: ReviewState) -> dict:
 
     summary_prompt = SUMMARY_PROMPT.format(
         pr_title=state.get("pr_title", ""),
-        pr_body=state.get("pr_body", "")[:1000],
+        pr_body=(state.get("pr_body") or "")[:1000],
         changed_files=len(changed_files),
         findings_summary=findings_summary,
     )
