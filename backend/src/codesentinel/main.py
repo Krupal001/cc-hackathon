@@ -57,7 +57,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[_settings.dashboard_base_url, "http://localhost:3000"],
+    allow_origins=[
+        _settings.dashboard_base_url,
+        "http://localhost:3000",
+        "https://victorious-creation-production-6ff1.up.railway.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
