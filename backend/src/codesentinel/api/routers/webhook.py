@@ -29,7 +29,7 @@ async def webhook(
 
     logger.info(
         "webhook_received",
-        event=x_github_event,
+        github_event=x_github_event,
         action=action,
         delivery=x_github_delivery,
     )
