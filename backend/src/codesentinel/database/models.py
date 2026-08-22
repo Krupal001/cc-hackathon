@@ -40,10 +40,6 @@ class Installation(Base):
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
-    settings = relationship(
-        "InstallationSettings", back_populates="installation", uselist=False
-    )
-    reviews = relationship("Review", back_populates="installation")
 
 
 class InstallationSettings(Base):
@@ -60,7 +56,6 @@ class InstallationSettings(Base):
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
-    installation = relationship("Installation", back_populates="settings")
 
 
 class Review(Base):
@@ -94,8 +89,6 @@ class Review(Base):
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
-    installation = relationship("Installation", back_populates="reviews")
-    costs = relationship("ReviewCost", back_populates="review")
 
 
 class ReviewJob(Base):
@@ -227,7 +220,6 @@ class ReviewCost(Base):
     agent_breakdown = Column(JSONB, default=dict)
     created_at = Column(DateTime, default=utcnow)
 
-    review = relationship("Review", back_populates="costs")
 
 
 class CodebaseEmbedding(Base):
