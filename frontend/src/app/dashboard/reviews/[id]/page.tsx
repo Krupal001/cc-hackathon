@@ -1,36 +1,62 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { formatDate, severityColor, scoreColor } from "@/lib/utils";
-import { ArrowLeft, GitBranch, DollarSign, Zap } from "lucide-react";
+import { ArrowLeft, GitBranch, DollarSign, Zap, Loader2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 
-export default async function ReviewDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  let review: any = null;
+export default function ReviewDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
+  const [review, setReview] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  try {
-    const decoded = decodeURIComponent(params.id);
-    const [repoPart, prAndSha] = decoded.split(":");
-    const [prNumber, commitSha] = prAndSha.split("#");
-    review = await api.getReviewByKey(repoPart, parseInt(prNumber), commitSha);
-  } catch {
-    try {
-      review = await api.getReview(parseInt(params.id));
-    } catch {
-      // Not found
+  useEffect(() => {
+    async function fetchReview() {
+      setLoading(true);
+      setError(null);
+      try {
+        let data;
+        try {
+          const decoded = decodeURIComponent(id);
+          const [repoPart, prAndSha] = decoded.split(":");
+          const [prNumber, commitSha] = prAndSha.split("#");
+          data = await api.getReviewByKey(repoPart, parseInt(prNumber), commitSha);
+        } catch {
+          data = await api.getReview(parseInt(id));
+        }
+        setReview(data);
+      } catch (err) {
+        setError("Failed to load review. It may not exist or the backend is unavailable.");
+      } finally {
+        setLoading(false);
+      }
     }
+    fetchReview();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
-  if (!review) {
+  if (error || !review) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <p className="text-lg text-muted-foreground">Review not found</p>
-        <Link
-          href="/dashboard/reviews"
-          className="mt-4 text-primary hover:underline"
-        >
+        {error && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+            <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            <p className="text-sm text-yellow-500">{error}</p>
+          </div>
+        )}
+        {!error && <p className="text-lg text-muted-foreground">Review not found</p>}
+        <Link href="/dashboard/reviews" className="mt-4 text-primary hover:underline">
           Back to reviews
         </Link>
       </div>
@@ -59,8 +85,7 @@ export default async function ReviewDetailPage({
               {review.repo_full_name}#{review.pr_number}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Commit {review.commit_sha.slice(0, 8)} ·{" "}
-              {formatDate(review.created_at)}
+              Commit {review.commit_sha?.slice(0, 8)} · {formatDate(review.created_at)}
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -94,7 +119,7 @@ export default async function ReviewDetailPage({
           <div className="flex items-center gap-2">
             <DollarSign className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm">
-              ${review.estimated_cost_usd.toFixed(4)}
+              ${review.estimated_cost_usd?.toFixed(4) || "0.0000"}
             </span>
           </div>
           <div className="flex items-center gap-2">

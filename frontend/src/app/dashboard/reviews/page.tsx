@@ -1,25 +1,60 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatDate, scoreColor } from "@/lib/utils";
+import { Loader2, RefreshCw, AlertTriangle } from "lucide-react";
+import { useSearchParams, useRouter } from "next/navigation";
 
-export default async function ReviewsPage({
-  searchParams,
-}: {
-  searchParams: { repo?: string; status?: string };
-}) {
-  let reviews: any[] = [];
-  let total = 0;
+export default function ReviewsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const statusFilter = searchParams.get("status") || "";
+  const repoFilter = searchParams.get("repo") || "";
 
-  try {
-    const data = await api.listReviews({
-      repo: searchParams.repo,
-      status: searchParams.status,
-      limit: 100,
-    });
-    reviews = data.reviews;
-    total = data.total;
-  } catch {
-    // Backend not connected
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    try {
+      const data = await api.listReviews({
+        repo: repoFilter || undefined,
+        status: statusFilter || undefined,
+        limit: 100,
+      });
+      setReviews(data.reviews);
+      setTotal(data.total);
+    } catch (err) {
+      setError("Failed to load reviews. Is the backend running?");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [repoFilter, statusFilter]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleStatusChange = (value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value) params.set("status", value);
+    else params.delete("status");
+    router.push(`/dashboard/reviews?${params.toString()}`);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (
@@ -27,9 +62,18 @@ export default async function ReviewsPage({
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">All Reviews ({total})</h2>
         <div className="flex gap-2">
+          <button
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
           <select
             className="rounded-md border border-border bg-card px-3 py-1.5 text-sm"
-            defaultValue={searchParams.status || ""}
+            value={statusFilter}
+            onChange={(e) => handleStatusChange(e.target.value)}
           >
             <option value="">All statuses</option>
             <option value="complete">Complete</option>
@@ -39,10 +83,20 @@ export default async function ReviewsPage({
         </div>
       </div>
 
+      {error && (
+        <div className="flex items-center gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+          <AlertTriangle className="h-5 w-5 text-yellow-500" />
+          <p className="text-sm text-yellow-500">{error}</p>
+        </div>
+      )}
+
       <div className="rounded-lg border border-border bg-card">
         {reviews.length === 0 ? (
-          <div className="px-6 py-12 text-center text-muted-foreground">
-            No reviews found.
+          <div className="px-6 py-12 text-center">
+            <p className="text-muted-foreground">No reviews found.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Open a PR in a connected repository to trigger a review.
+            </p>
           </div>
         ) : (
           <table className="w-full">
@@ -58,12 +112,14 @@ export default async function ReviewsPage({
             </thead>
             <tbody className="divide-y divide-border">
               {reviews.map((review) => (
-                <tr key={review.id} className="hover:bg-accent/50">
+                <tr
+                  key={review.id}
+                  onClick={() => router.push(`/dashboard/reviews/${review.id}`)}
+                  className="cursor-pointer hover:bg-accent/50"
+                >
                   <td className="px-6 py-4">
                     <span
-                      className={`text-lg font-bold ${scoreColor(
-                        review.merge_score || 0
-                      )}`}
+                      className={`text-lg font-bold ${scoreColor(review.merge_score || 0)}`}
                     >
                       {review.merge_score || "—"}
                     </span>

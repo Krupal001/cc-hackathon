@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GitBranch, Home, Settings, BarChart3, Github, Shield } from "lucide-react";
+import { useSession, signOut } from "next-auth/react";
+import { GitBranch, Home, Settings, BarChart3, Github, Shield, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -14,6 +15,7 @@ const navItems = [
 
 export function Sidenav() {
   const pathname = usePathname();
+  const { data: session } = useSession();
 
   return (
     <aside className="fixed left-0 top-0 z-30 h-screen w-64 border-r border-border bg-card">
@@ -61,18 +63,45 @@ export function Sidenav() {
       </nav>
 
       <div className="absolute bottom-0 left-0 right-0 border-t border-border p-4">
-        <a
-          href={
-            process.env.NEXT_PUBLIC_GITHUB_APP_URL ||
-            "https://github.com/apps/review-x/installations/new"
-          }
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-        >
-          <Github className="h-4 w-4" />
-          Install App
-        </a>
+        {session?.user && (
+          <div className="mb-3 flex items-center gap-2 px-1">
+            {session.user.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={session.user.image}
+                alt={session.user.name || "User"}
+                className="h-7 w-7 rounded-full"
+              />
+            ) : null}
+            <div className="flex-1 truncate">
+              <p className="truncate text-xs font-medium">{session.user.name}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {session.user.email}
+              </p>
+            </div>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <a
+            href={
+              process.env.NEXT_PUBLIC_GITHUB_APP_URL ||
+              "https://github.com/apps/review-x/installations/new"
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-1 items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            <Github className="h-4 w-4" />
+            Install App
+          </a>
+          <button
+            onClick={() => signOut({ callbackUrl: "/signin" })}
+            className="flex items-center justify-center rounded-md border border-border px-3 py-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            title="Sign out"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </aside>
   );
