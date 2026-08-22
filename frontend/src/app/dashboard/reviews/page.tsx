@@ -30,8 +30,9 @@ export default function ReviewsPage() {
       });
       setReviews(data.reviews);
       setTotal(data.total);
-    } catch (err) {
-      setError("Failed to load reviews. Is the backend running?");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`API error: ${msg}`);
     } finally {
       setLoading(false);
       setRefreshing(false);
