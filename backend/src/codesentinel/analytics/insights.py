@@ -94,12 +94,12 @@ async def run_insight_rollup() -> dict:
                 await session.execute(
                     text("""
                         INSERT INTO installation_fp_insights
-                            (installation_id, window, total_findings,
+                            (installation_id, "window", total_findings,
                              disputed_findings, resolved_findings, quiet_drops,
                              category_dispute_rates, computed_at)
                         VALUES (:id, :window, :total, :disputed, :resolved,
                                 :quiet, :rates, :now)
-                        ON CONFLICT (installation_id, window)
+                        ON CONFLICT (installation_id, "window")
                         DO UPDATE SET
                             total_findings = EXCLUDED.total_findings,
                             disputed_findings = EXCLUDED.disputed_findings,

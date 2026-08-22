@@ -81,8 +81,8 @@ class ReviewState(TypedDict):
     merge_score_reason: str
     tokens_used: dict
     cost_usd: float
-    enabled_agent_count: int
-    errors: list[str]
+    enabled_agent_count: Annotated[int, operator.add]
+    errors: Annotated[list[str], operator.add]
 
 
 # ─── LLM Factory ─────────────────────────────────────────────────────────────
@@ -300,7 +300,7 @@ async def security_agent_node(state: ReviewState) -> dict:
     findings = await _run_agent("security", SECURITY_PROMPT, state, tools)
     return {
         "raw_findings": findings,
-        "enabled_agent_count": state.get("enabled_agent_count", 0) + 1,
+        "enabled_agent_count": 1,
     }
 
 
@@ -310,7 +310,7 @@ async def bug_agent_node(state: ReviewState) -> dict:
     findings = await _run_agent("bugs", BUG_PROMPT, state, tools)
     return {
         "raw_findings": findings,
-        "enabled_agent_count": state.get("enabled_agent_count", 0) + 1,
+        "enabled_agent_count": 1,
     }
 
 
@@ -320,7 +320,7 @@ async def style_agent_node(state: ReviewState) -> dict:
     findings = await _run_agent("style", STYLE_PROMPT, state, tools)
     return {
         "raw_findings": findings,
-        "enabled_agent_count": state.get("enabled_agent_count", 0) + 1,
+        "enabled_agent_count": 1,
     }
 
 
@@ -330,7 +330,7 @@ async def error_handling_agent_node(state: ReviewState) -> dict:
     findings = await _run_agent("error_handling", ERROR_HANDLING_PROMPT, state, tools)
     return {
         "raw_findings": findings,
-        "enabled_agent_count": state.get("enabled_agent_count", 0) + 1,
+        "enabled_agent_count": 1,
     }
 
 
@@ -340,7 +340,7 @@ async def test_coverage_agent_node(state: ReviewState) -> dict:
     findings = await _run_agent("test_coverage", TEST_COVERAGE_PROMPT, state, tools)
     return {
         "raw_findings": findings,
-        "enabled_agent_count": state.get("enabled_agent_count", 0) + 1,
+        "enabled_agent_count": 1,
     }
 
 
@@ -350,7 +350,7 @@ async def comment_accuracy_agent_node(state: ReviewState) -> dict:
     findings = await _run_agent("comment_accuracy", COMMENT_ACCURACY_PROMPT, state, tools)
     return {
         "raw_findings": findings,
-        "enabled_agent_count": state.get("enabled_agent_count", 0) + 1,
+        "enabled_agent_count": 1,
     }
 
 
