@@ -6,13 +6,13 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINKER=copy \
     UV_PYTHON_DOWNLOADS=never
 
-COPY pyproject.toml uv.lock ./
+COPY backend/pyproject.toml backend/uv.lock ./
 
 RUN uv sync --frozen --no-install-project --no-dev
 
-COPY src/ src/
-COPY alembic.ini ./
-COPY alembic/ alembic/
+COPY backend/src/ src/
+COPY backend/alembic.ini ./
+COPY backend/alembic/ alembic/
 
 RUN uv sync --frozen --no-dev
 
