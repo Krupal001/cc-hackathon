@@ -20,8 +20,9 @@ export default function RepositoriesPage() {
     try {
       const data = await api.listInstallations();
       setInstallations(data.installations || []);
-    } catch (err) {
-      setError("Failed to load repositories. Is the backend running?");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Failed to load repositories: ${msg}`);
     } finally {
       setLoading(false);
       setRefreshing(false);
