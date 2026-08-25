@@ -174,8 +174,14 @@ async def process_review_job(job: ReviewJob) -> None:
 
     # Per-step progress callback — updates the check run summary as each agent finishes
     completed_steps: list[str] = []
+    accumulated_tokens: dict = {"input": 0, "output": 0}
 
-    async def _on_step(node_name: str, _output: dict) -> None:
+    async def _on_step(node_name: str, output: dict) -> None:
+        # Always accumulate tokens — available even if run_review raises later
+        node_tokens = output.get("tokens_used") or {}
+        accumulated_tokens["input"] += node_tokens.get("input", 0)
+        accumulated_tokens["output"] += node_tokens.get("output", 0)
+
         label = _STEP_LABELS.get(node_name)
         if not label or not check_run_id:
             return
@@ -361,12 +367,24 @@ async def process_review_job(job: ReviewJob) -> None:
             diagram="",
             merge_score=None,
             merge_score_reason="",
-            tokens={},
+            tokens=accumulated_tokens,
             cost=0.0,
             enabled_agent_count=0,
             review_mode=review_mode,
             error_message=str(e),
         )
+
+        # Build failure check run summary with tokens if any were used
+        fail_in = accumulated_tokens.get("input", 0)
+        fail_out = accumulated_tokens.get("output", 0)
+        fail_total = fail_in + fail_out
+        fail_summary = f"❌ {str(e)[:300]}"
+        if fail_total > 0:
+            fail_summary += (
+                f"\n\n---\n🔢 **Tokens used before failure:** {fail_total:,}"
+                f" (↑ {fail_in:,} input / ↓ {fail_out:,} output)"
+            )
+        fail_summary += "\n\n> Click **Re-run** to retry the review."
 
         # Update or create failed check run
         try:
@@ -374,8 +392,8 @@ async def process_review_job(job: ReviewJob) -> None:
                 "status": "completed",
                 "conclusion": "failure",
                 "output": {
-                    "title": "Review failed",
-                    "summary": str(e)[:200],
+                    "title": "❌ Review failed — click Re-run to retry",
+                    "summary": fail_summary,
                 },
             }
             if check_run_id:
