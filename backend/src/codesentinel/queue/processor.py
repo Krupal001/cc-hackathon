@@ -129,6 +129,7 @@ async def process_review_job(job: ReviewJob) -> None:
     gc = GitHubClient(auth, installation_id)
 
     pr_number_commit_sha = f"{pr_number}#{commit_sha}"
+    check_run_id: int | None = payload.get("check_run_id")
 
     logger.info(
         "processing_review",
@@ -137,6 +138,24 @@ async def process_review_job(job: ReviewJob) -> None:
         sha=commit_sha[:8],
         mode=review_mode,
     )
+
+    # Update the check run to in_progress so GitHub shows the spinner
+    if check_run_id:
+        try:
+            await gc.update_check_run(
+                owner,
+                repo,
+                check_run_id,
+                {
+                    "status": "in_progress",
+                    "output": {
+                        "title": "Review in progress",
+                        "summary": "CodeSentinel is analyzing your pull request...",
+                    },
+                },
+            )
+        except Exception as e:
+            logger.warning("check_run_update_failed", error=str(e))
 
     try:
         # Run the LangGraph review pipeline
@@ -205,7 +224,7 @@ async def process_review_job(job: ReviewJob) -> None:
                 owner, repo, pr_number, event, summary, inline_comments
             )
 
-        # Create/update check run
+        # Update or create the final check run
         conclusion = "success" if merge_score >= 3 else "failure"
         check_title = f"{merge_score}/5 — {_check_title(findings)}"
 
@@ -216,21 +235,27 @@ async def process_review_job(job: ReviewJob) -> None:
                 f"{_settings.dashboard_base_url}/dashboard/reviews/{encoded}"
             )
 
-        await gc.create_check_run(
-            owner,
-            repo,
-            {
-                "name": "CodeSentinel Review",
-                "head_sha": commit_sha,
-                "status": "completed",
-                "conclusion": conclusion,
-                "details_url": review_detail_url,
-                "output": {
-                    "title": check_title,
-                    "summary": merge_score_reason,
-                },
+        check_run_payload = {
+            "status": "completed",
+            "conclusion": conclusion,
+            "details_url": review_detail_url,
+            "output": {
+                "title": check_title,
+                "summary": merge_score_reason,
             },
-        )
+        }
+        if check_run_id:
+            await gc.update_check_run(owner, repo, check_run_id, check_run_payload)
+        else:
+            await gc.create_check_run(
+                owner,
+                repo,
+                {
+                    "name": "CodeSentinel Review",
+                    "head_sha": commit_sha,
+                    **check_run_payload,
+                },
+            )
 
         # Store results in database
         await _store_review_result(
@@ -287,22 +312,28 @@ async def process_review_job(job: ReviewJob) -> None:
             error_message=str(e),
         )
 
-        # Create failed check run
+        # Update or create failed check run
         try:
-            await gc.create_check_run(
-                owner,
-                repo,
-                {
-                    "name": "CodeSentinel Review",
-                    "head_sha": commit_sha,
-                    "status": "completed",
-                    "conclusion": "failure",
-                    "output": {
-                        "title": "Review failed",
-                        "summary": str(e)[:200],
-                    },
+            failed_payload = {
+                "status": "completed",
+                "conclusion": "failure",
+                "output": {
+                    "title": "Review failed",
+                    "summary": str(e)[:200],
                 },
-            )
+            }
+            if check_run_id:
+                await gc.update_check_run(owner, repo, check_run_id, failed_payload)
+            else:
+                await gc.create_check_run(
+                    owner,
+                    repo,
+                    {
+                        "name": "CodeSentinel Review",
+                        "head_sha": commit_sha,
+                        **failed_payload,
+                    },
+                )
         except Exception:
             pass
 

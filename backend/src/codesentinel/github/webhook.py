@@ -73,6 +73,30 @@ async def _handle_pull_request(payload: dict) -> dict:
     if _is_bot_actor(pr.get("user", {})):
         return {"status": "skipped", "reason": "bot_author"}
 
+    owner, repo_name = repo_full_name.split("/")
+
+    # Create a "queued" check run immediately so GitHub shows a spinner right away
+    check_run_id = None
+    try:
+        auth = get_github_auth()
+        gc = GitHubClient(auth, installation["id"])
+        check_run = await gc.create_check_run(
+            owner,
+            repo_name,
+            {
+                "name": "CodeSentinel Review",
+                "head_sha": commit_sha,
+                "status": "queued",
+                "output": {
+                    "title": "Review queued",
+                    "summary": "CodeSentinel has received this PR and will begin reviewing shortly.",
+                },
+            },
+        )
+        check_run_id = check_run.get("id")
+    except Exception as e:
+        logger.warning("check_run_create_failed", error=str(e))
+
     job_payload = {
         "installation_id": installation["id"],
         "repo_full_name": repo_full_name,
@@ -85,6 +109,7 @@ async def _handle_pull_request(payload: dict) -> dict:
         "review_mode": "review",
         "author": pr.get("user", {}).get("login", ""),
         "is_draft": pr.get("draft", False),
+        "check_run_id": check_run_id,
     }
 
     await _enqueue_review(job_payload)
@@ -286,12 +311,38 @@ async def _handle_check_rerequest(payload: dict) -> dict:
         return {"status": "ignored", "reason": "no_pr"}
 
     commit_sha = check_run.get("head_sha", "")
+    repo_full_name = repo["full_name"]
+    owner, repo_name = repo_full_name.split("/")
+
+    # Create a queued check run for the re-request
+    check_run_id = None
+    try:
+        auth = get_github_auth()
+        gc = GitHubClient(auth, installation["id"])
+        new_check = await gc.create_check_run(
+            owner,
+            repo_name,
+            {
+                "name": "CodeSentinel Review",
+                "head_sha": commit_sha,
+                "status": "queued",
+                "output": {
+                    "title": "Review queued",
+                    "summary": "CodeSentinel re-review has been queued.",
+                },
+            },
+        )
+        check_run_id = new_check.get("id")
+    except Exception as e:
+        logger.warning("check_run_create_failed", error=str(e))
+
     job_payload = {
         "installation_id": installation["id"],
-        "repo_full_name": repo["full_name"],
+        "repo_full_name": repo_full_name,
         "pr_number": pr_number,
         "commit_sha": commit_sha,
         "review_mode": "review",
+        "check_run_id": check_run_id,
     }
 
     await _enqueue_review(job_payload)
