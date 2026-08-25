@@ -25,31 +25,33 @@ async def list_reviews(
     """List reviews with optional filters, scoped to the authenticated user."""
     if github_user_id is None:
         return {"reviews": [], "total": 0, "limit": limit, "offset": offset}
+
+    # Subquery for the user's installation IDs — avoids row multiplication
+    # when one installation has multiple repos (which caused N duplicate rows).
+    user_install_ids = (
+        select(Installation.installation_id)
+        .where(Installation.github_user_id == github_user_id)
+        .distinct()
+        .scalar_subquery()
+    )
+
+    base_filter = [Review.installation_id.in_(user_install_ids)]
+    if repo:
+        base_filter.append(Review.repo_full_name == repo)
+    if status:
+        base_filter.append(Review.status == status)
+
     query = (
         select(Review)
-        .join(Installation, Review.installation_id == Installation.installation_id)
-        .where(Installation.github_user_id == github_user_id)
+        .where(*base_filter)
         .order_by(desc(Review.created_at))
         .limit(limit)
         .offset(offset)
     )
-    if repo:
-        query = query.where(Review.repo_full_name == repo)
-    if status:
-        query = query.where(Review.status == status)
-
     result = await db.execute(query)
     reviews = result.scalars().all()
 
-    count_query = (
-        select(func.count(Review.id))
-        .join(Installation, Review.installation_id == Installation.installation_id)
-        .where(Installation.github_user_id == github_user_id)
-    )
-    if repo:
-        count_query = count_query.where(Review.repo_full_name == repo)
-    if status:
-        count_query = count_query.where(Review.status == status)
+    count_query = select(func.count(Review.id)).where(*base_filter)
     total = (await db.execute(count_query)).scalar() or 0
 
     return {

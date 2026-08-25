@@ -133,7 +133,12 @@ export default function DashboardPage() {
                       {review.repo_full_name}#{review.pr_number}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {review.findings?.length || 0} findings · {formatDate(review.created_at)}
+                      {review.findings?.length || 0} findings ·{" "}
+                      {(() => {
+                        const t = (review.input_tokens || 0) + (review.output_tokens || 0);
+                        return t > 0 ? `${t >= 1000 ? (t / 1000).toFixed(1) + "k" : t} tokens · ` : "";
+                      })()}
+                      {formatDate(review.created_at)}
                     </p>
                   </div>
                 </div>

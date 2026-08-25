@@ -278,13 +278,26 @@ async def process_review_job(job: ReviewJob) -> None:
                 f"{_settings.dashboard_base_url}/dashboard/reviews/{encoded}"
             )
 
+        tokens = result.get("tokens_used") or {}
+        in_tok = tokens.get("input", 0)
+        out_tok = tokens.get("output", 0)
+        total_tok = in_tok + out_tok
+        token_line = ""
+        if total_tok > 0:
+            token_line = (
+                f"\n\n---\n🔢 **Tokens:** {total_tok:,}"
+                f" (↑ {in_tok:,} input / ↓ {out_tok:,} output)"
+            )
+            if cost > 0:
+                token_line += f" · 💰 **Est. cost:** ${cost:.4f}"
+
         check_run_payload = {
             "status": "completed",
             "conclusion": conclusion,
             "details_url": review_detail_url,
             "output": {
                 "title": check_title,
-                "summary": merge_score_reason,
+                "summary": merge_score_reason + token_line,
             },
         }
         if check_run_id:

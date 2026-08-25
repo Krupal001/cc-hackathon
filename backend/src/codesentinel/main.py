@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 from contextlib import asynccontextmanager
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
+import structlog
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +21,28 @@ from codesentinel.config.settings import get_settings
 from codesentinel.database.session import init_db
 from codesentinel.queue.worker import start_worker
 
+def _configure_logging() -> None:
+    """Configure structlog to emit timestamps in the configured timezone."""
+    tz = ZoneInfo(os.environ.get("LOG_TIMEZONE", "Asia/Kolkata"))
+
+    def _timestamper(_logger: object, _method: str, event_dict: dict) -> dict:
+        event_dict["timestamp"] = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S %Z")
+        return event_dict
+
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_log_level,
+            _timestamper,
+            structlog.dev.ConsoleRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+
+_configure_logging()
 logger = get_logger()
 _settings = get_settings()
 

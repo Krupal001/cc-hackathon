@@ -8,12 +8,16 @@ export function cn(...inputs: ClassValue[]) {
 export function formatDate(date: string | Date | null): string {
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleDateString("en-US", {
+  const tz = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kolkata";
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: tz,
+    day: "2-digit",
     month: "short",
-    day: "numeric",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
+    hour12: true,
+  }).format(d);
 }
 
 export function severityColor(severity: string): string {

@@ -261,13 +261,34 @@ async def load_context_node(state: ReviewState) -> dict:
     }
 
 
+def _extract_tokens(messages: list) -> dict:
+    """Sum token usage across all AI messages in a LangChain messages list."""
+    tokens = {"input": 0, "output": 0}
+    for msg in messages:
+        meta = getattr(msg, "response_metadata", None) or {}
+        if "token_usage" in meta:  # OpenAI
+            tu = meta["token_usage"]
+            tokens["input"] += tu.get("prompt_tokens", 0)
+            tokens["output"] += tu.get("completion_tokens", 0)
+        elif "usage" in meta:  # Anthropic
+            u = meta["usage"]
+            tokens["input"] += u.get("input_tokens", 0)
+            tokens["output"] += u.get("output_tokens", 0)
+    return tokens
+
+
+def _extract_single_tokens(msg: Any) -> dict:
+    """Extract token usage from a single AI message."""
+    return _extract_tokens([msg])
+
+
 async def _run_agent(
     agent_name: str,
     prompt_template: str,
     state: ReviewState,
     tools: list[BaseTool],
-) -> list[Finding]:
-    """Run a single ReAct agent with tools."""
+) -> tuple[list[Finding], dict]:
+    """Run a single ReAct agent with tools. Returns (findings, tokens)."""
     llm = create_llm(temperature=0, with_tools=True)
 
     prompt = prompt_template.format(
@@ -283,75 +304,60 @@ async def _run_agent(
         result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
         last_message = result["messages"][-1].content
         findings = _parse_findings(last_message, agent_name)
+        tokens = _extract_tokens(result.get("messages", []))
         logger.info(
             "agent_completed",
             agent=agent_name,
             findings=len(findings),
+            input_tokens=tokens["input"],
+            output_tokens=tokens["output"],
         )
-        return findings
+        return findings, tokens
     except Exception as e:
         logger.error("agent_failed", agent=agent_name, error=str(e))
-        return []
+        return [], {"input": 0, "output": 0}
 
 
 async def security_agent_node(state: ReviewState) -> dict:
     gc = state["github_client"]
     tools = make_tools(gc, state["owner"], state["repo"], state["commit_sha"])
-    findings = await _run_agent("security", SECURITY_PROMPT, state, tools)
-    return {
-        "raw_findings": findings,
-        "enabled_agent_count": 1,
-    }
+    findings, tokens = await _run_agent("security", SECURITY_PROMPT, state, tools)
+    return {"raw_findings": findings, "enabled_agent_count": 1, "tokens_used": tokens}
 
 
 async def bug_agent_node(state: ReviewState) -> dict:
     gc = state["github_client"]
     tools = make_tools(gc, state["owner"], state["repo"], state["commit_sha"])
-    findings = await _run_agent("bugs", BUG_PROMPT, state, tools)
-    return {
-        "raw_findings": findings,
-        "enabled_agent_count": 1,
-    }
+    findings, tokens = await _run_agent("bugs", BUG_PROMPT, state, tools)
+    return {"raw_findings": findings, "enabled_agent_count": 1, "tokens_used": tokens}
 
 
 async def style_agent_node(state: ReviewState) -> dict:
     gc = state["github_client"]
     tools = make_tools(gc, state["owner"], state["repo"], state["commit_sha"])
-    findings = await _run_agent("style", STYLE_PROMPT, state, tools)
-    return {
-        "raw_findings": findings,
-        "enabled_agent_count": 1,
-    }
+    findings, tokens = await _run_agent("style", STYLE_PROMPT, state, tools)
+    return {"raw_findings": findings, "enabled_agent_count": 1, "tokens_used": tokens}
 
 
 async def error_handling_agent_node(state: ReviewState) -> dict:
     gc = state["github_client"]
     tools = make_tools(gc, state["owner"], state["repo"], state["commit_sha"])
-    findings = await _run_agent("error_handling", ERROR_HANDLING_PROMPT, state, tools)
-    return {
-        "raw_findings": findings,
-        "enabled_agent_count": 1,
-    }
+    findings, tokens = await _run_agent("error_handling", ERROR_HANDLING_PROMPT, state, tools)
+    return {"raw_findings": findings, "enabled_agent_count": 1, "tokens_used": tokens}
 
 
 async def test_coverage_agent_node(state: ReviewState) -> dict:
     gc = state["github_client"]
     tools = make_tools(gc, state["owner"], state["repo"], state["commit_sha"])
-    findings = await _run_agent("test_coverage", TEST_COVERAGE_PROMPT, state, tools)
-    return {
-        "raw_findings": findings,
-        "enabled_agent_count": 1,
-    }
+    findings, tokens = await _run_agent("test_coverage", TEST_COVERAGE_PROMPT, state, tools)
+    return {"raw_findings": findings, "enabled_agent_count": 1, "tokens_used": tokens}
 
 
 async def comment_accuracy_agent_node(state: ReviewState) -> dict:
     gc = state["github_client"]
     tools = make_tools(gc, state["owner"], state["repo"], state["commit_sha"])
-    findings = await _run_agent("comment_accuracy", COMMENT_ACCURACY_PROMPT, state, tools)
-    return {
-        "raw_findings": findings,
-        "enabled_agent_count": 1,
-    }
+    findings, tokens = await _run_agent("comment_accuracy", COMMENT_ACCURACY_PROMPT, state, tools)
+    return {"raw_findings": findings, "enabled_agent_count": 1, "tokens_used": tokens}
 
 
 async def verification_node(state: ReviewState) -> dict:
@@ -364,6 +370,7 @@ async def verification_node(state: ReviewState) -> dict:
 
     gc = state["github_client"]
     verified = []
+    node_tokens = {"input": 0, "output": 0}
 
     for finding in state["raw_findings"]:
         if finding["severity"] not in ("critical", "warning"):
@@ -389,13 +396,16 @@ async def verification_node(state: ReviewState) -> dict:
             finding["verification"] = (
                 "verified" if verdict["valid"] else "unverified"
             )
+            t = _extract_single_tokens(result)
+            node_tokens["input"] += t["input"]
+            node_tokens["output"] += t["output"]
         except Exception as e:
             logger.warning("verification_failed", finding=finding["title"], error=str(e))
             finding["verification"] = "unverified"
 
         verified.append(finding)
 
-    return {"verified_findings": verified}
+    return {"verified_findings": verified, "tokens_used": node_tokens}
 
 
 async def orchestration_node(state: ReviewState) -> dict:
@@ -441,6 +451,7 @@ async def orchestration_node(state: ReviewState) -> dict:
         changed_lines=changed_lines,
     )
 
+    orch_tokens = {"input": 0, "output": 0}
     try:
         result = await llm.ainvoke([HumanMessage(content=prompt)])
         orch_data = _parse_orchestrator(result.content)
@@ -451,6 +462,7 @@ async def orchestration_node(state: ReviewState) -> dict:
                 _normalize_finding(f, f.get("category", "general"))
                 for f in orch_data["findings"]
             ]
+        orch_tokens = _extract_single_tokens(result)
     except Exception as e:
         logger.warning("orchestrator_failed", error=str(e))
         critical_count = sum(1 for f in deduped if f["severity"] == "critical")
@@ -465,6 +477,7 @@ async def orchestration_node(state: ReviewState) -> dict:
         "final_findings": deduped,
         "merge_score": merge_score,
         "merge_score_reason": merge_score_reason,
+        "tokens_used": orch_tokens,
     }
 
 
@@ -506,15 +519,18 @@ async def generative_node(state: ReviewState) -> dict:
             summary_task, diagram_task, delta_task
         )
         delta_caption = delta_result.content
+        gen_tokens = _extract_tokens([summary_result, diagram_result, delta_result])
     else:
         summary_result, diagram_result = await asyncio.gather(
             summary_task, diagram_task
         )
+        gen_tokens = _extract_tokens([summary_result, diagram_result])
 
     return {
         "summary": summary_result.content,
         "diagram": diagram_result.content.strip(),
         "delta_caption": delta_caption,
+        "tokens_used": gen_tokens,
     }
 
 
@@ -622,6 +638,12 @@ async def run_review(
                     final_state[key] = final_state.get(key, []) + value
                 elif key in _additive_ints:
                     final_state[key] = final_state.get(key, 0) + value
+                elif key == "tokens_used" and isinstance(value, dict):
+                    existing = final_state.get("tokens_used") or {"input": 0, "output": 0}
+                    final_state["tokens_used"] = {
+                        "input": existing.get("input", 0) + value.get("input", 0),
+                        "output": existing.get("output", 0) + value.get("output", 0),
+                    }
                 else:
                     final_state[key] = value
             if on_node_complete is not None:

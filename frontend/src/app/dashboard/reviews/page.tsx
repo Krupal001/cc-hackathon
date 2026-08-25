@@ -107,6 +107,7 @@ export default function ReviewsPage() {
                 <th className="px-6 py-3 font-medium">Repository</th>
                 <th className="px-6 py-3 font-medium">PR</th>
                 <th className="px-6 py-3 font-medium">Findings</th>
+                <th className="px-6 py-3 font-medium">Tokens</th>
                 <th className="px-6 py-3 font-medium">Status</th>
                 <th className="px-6 py-3 font-medium">Date</th>
               </tr>
@@ -131,6 +132,17 @@ export default function ReviewsPage() {
                   <td className="px-6 py-4 text-sm">#{review.pr_number}</td>
                   <td className="px-6 py-4 text-sm">
                     {review.findings?.length || 0}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-muted-foreground">
+                    {(() => {
+                      const total = (review.input_tokens || 0) + (review.output_tokens || 0);
+                      if (!total) return "—";
+                      return (
+                        <span title={`↑${(review.input_tokens||0).toLocaleString()} in / ↓${(review.output_tokens||0).toLocaleString()} out`}>
+                          {total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4">
                     <span
