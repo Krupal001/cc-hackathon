@@ -162,11 +162,24 @@ async def list_installations(
     if github_user_id is None:
         return {"installations": []}
 
-    # Discover and claim installations, then sync repos from GitHub API
+    # Step 1: Try to claim legacy NULL rows via OAuth token (best-effort)
     if access_token:
-        install_ids = await _auto_claim_installations(db, github_user_id, access_token)
+        await _auto_claim_installations(db, github_user_id, access_token)
+
+    # Step 2: Get ALL installation IDs we already know about for this user
+    id_result = await db.execute(
+        select(Installation.installation_id)
+        .where(Installation.github_user_id == github_user_id)
+        .distinct()
+    )
+    known_install_ids = [row[0] for row in id_result.fetchall()]
+
+    # Step 3: Sync each installation's repos from GitHub API (source of truth).
+    # This runs even if Step 1 failed — ensuring stale repos are cleaned up.
+    if known_install_ids:
+        logger.info("syncing_installation_repos", installation_ids=known_install_ids)
         await asyncio.gather(
-            *[_sync_installation_repos(db, iid, github_user_id) for iid in install_ids],
+            *[_sync_installation_repos(db, iid, github_user_id) for iid in known_install_ids],
             return_exceptions=True,
         )
 
