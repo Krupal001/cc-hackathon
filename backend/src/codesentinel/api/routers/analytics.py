@@ -18,15 +18,11 @@ async def _verify_installation_ownership(
 ) -> None:
     """Verify that the installation belongs to the authenticated user."""
     if github_user_id is None:
-        return
-    from sqlalchemy import or_
+        raise HTTPException(status_code=401, detail="Authentication required")
     result = await db.execute(
         select(Installation).where(
             Installation.installation_id == installation_id,
-            or_(
-                Installation.github_user_id == github_user_id,
-                Installation.github_user_id.is_(None),
-            ),
+            Installation.github_user_id == github_user_id,
         )
     )
     if not result.scalar_one_or_none():

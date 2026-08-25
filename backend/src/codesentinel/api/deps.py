@@ -18,3 +18,10 @@ async def get_github_user_id(
         return int(x_github_user_id)
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid X-GitHub-User-Id header")
+
+
+async def get_github_access_token(
+    x_github_access_token: str | None = Header(None, alias="X-GitHub-Access-Token"),
+) -> str | None:
+    """Extract the GitHub OAuth access token from the request header."""
+    return x_github_access_token

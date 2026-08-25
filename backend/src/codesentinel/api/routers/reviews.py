@@ -23,22 +23,16 @@ async def list_reviews(
     github_user_id: int | None = Depends(get_github_user_id),
 ) -> dict[str, Any]:
     """List reviews with optional filters, scoped to the authenticated user."""
-    from sqlalchemy import or_
+    if github_user_id is None:
+        return {"reviews": [], "total": 0, "limit": limit, "offset": offset}
     query = (
         select(Review)
         .join(Installation, Review.installation_id == Installation.installation_id)
+        .where(Installation.github_user_id == github_user_id)
         .order_by(desc(Review.created_at))
         .limit(limit)
         .offset(offset)
     )
-
-    if github_user_id is not None:
-        query = query.where(
-            or_(
-                Installation.github_user_id == github_user_id,
-                Installation.github_user_id.is_(None),
-            )
-        )
     if repo:
         query = query.where(Review.repo_full_name == repo)
     if status:
@@ -50,14 +44,8 @@ async def list_reviews(
     count_query = (
         select(func.count(Review.id))
         .join(Installation, Review.installation_id == Installation.installation_id)
+        .where(Installation.github_user_id == github_user_id)
     )
-    if github_user_id is not None:
-        count_query = count_query.where(
-            or_(
-                Installation.github_user_id == github_user_id,
-                Installation.github_user_id.is_(None),
-            )
-        )
     if repo:
         count_query = count_query.where(Review.repo_full_name == repo)
     if status:
@@ -76,9 +64,20 @@ async def list_reviews(
 async def get_review(
     review_id: int,
     db: AsyncSession = Depends(get_db),
+    github_user_id: int | None = Depends(get_github_user_id),
 ) -> dict[str, Any]:
-    """Get a single review by ID."""
-    review = await db.get(Review, review_id)
+    """Get a single review by ID, scoped to the authenticated user."""
+    if github_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await db.execute(
+        select(Review)
+        .join(Installation, Review.installation_id == Installation.installation_id)
+        .where(
+            Review.id == review_id,
+            Installation.github_user_id == github_user_id,
+        )
+    )
+    review = result.scalar_one_or_none()
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
     return _serialize_review(review)
@@ -90,13 +89,19 @@ async def get_review_by_key(
     pr_number: int,
     commit_sha: str,
     db: AsyncSession = Depends(get_db),
+    github_user_id: int | None = Depends(get_github_user_id),
 ) -> dict[str, Any]:
-    """Get review by repo + PR + commit SHA."""
+    """Get review by repo + PR + commit SHA, scoped to the authenticated user."""
+    if github_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
     pr_number_commit_sha = f"{pr_number}#{commit_sha}"
     result = await db.execute(
-        select(Review).where(
+        select(Review)
+        .join(Installation, Review.installation_id == Installation.installation_id)
+        .where(
             Review.repo_full_name == repo_full_name,
             Review.pr_number_commit_sha == pr_number_commit_sha,
+            Installation.github_user_id == github_user_id,
         )
     )
     review = result.scalar_one_or_none()

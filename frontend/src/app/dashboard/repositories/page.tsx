@@ -19,6 +19,8 @@ export default function RepositoriesPage() {
     setError(null);
     try {
       const data = await api.listInstallations();
+
+       
       setInstallations(data.installations || []);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -31,7 +33,7 @@ export default function RepositoriesPage() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(() => fetchData(true), 60000);
+    const interval = setInterval(() => fetchData(true), 10000);
     return () => clearInterval(interval);
   }, [fetchData]);
 

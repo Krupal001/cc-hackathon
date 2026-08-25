@@ -14,11 +14,15 @@ async function proxy(req: NextRequest, params: { path: string[] }) {
 
   const headers: HeadersInit = { "Content-Type": "application/json" };
 
-  // Attach GitHub user ID from session for user-level data isolation
+  // Attach GitHub user ID and access token from session for user-level data isolation
   const session = await getServerSession(authOptions);
   const githubUserId = (session as any)?.githubUserId;
+  const accessToken = (session as any)?.accessToken;
   if (githubUserId) {
     headers["X-GitHub-User-Id"] = String(githubUserId);
+  }
+  if (accessToken) {
+    headers["X-GitHub-Access-Token"] = String(accessToken);
   }
 
   let body: string | undefined;
