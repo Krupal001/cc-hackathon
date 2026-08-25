@@ -46,6 +46,7 @@ def _format_review_comment(
     merge_score_reason: str,
     delta_caption: str,
     cost_usd: float,
+    tokens: dict | None = None,
 ) -> str:
     """Format the GitHub review comment as markdown."""
     parts = [BOT_COMMENT_MARKER]
@@ -103,8 +104,18 @@ def _format_review_comment(
         parts.append("### Architecture Impact\n")
         parts.append(f"```mermaid\n{diagram}\n```\n")
 
+    footer_parts = []
+    tokens = tokens or {}
+    total_tok = tokens.get("input", 0) + tokens.get("output", 0)
+    if total_tok > 0:
+        footer_parts.append(
+            f"🔢 **{total_tok:,} tokens**"
+            f" (↑ {tokens.get('input', 0):,} input / ↓ {tokens.get('output', 0):,} output)"
+        )
     if cost_usd > 0:
-        parts.append(f"<sub>Estimated cost: ${cost_usd:.4f}</sub>\n")
+        footer_parts.append(f"💰 Est. cost: ${cost_usd:.4f}")
+    if footer_parts:
+        parts.append("\n---\n<sub>" + " · ".join(footer_parts) + "</sub>\n")
 
     return "\n".join(parts)
 
@@ -236,6 +247,7 @@ async def process_review_job(job: ReviewJob) -> None:
             merge_score_reason=merge_score_reason,
             delta_caption=delta_caption,
             cost_usd=cost,
+            tokens=result.get("tokens_used") or {},
         )
 
         # Check for existing bot comment
