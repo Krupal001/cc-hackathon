@@ -22,6 +22,21 @@ _settings = get_settings()
 
 BOT_COMMENT_MARKER = "<!-- codesentinel-review -->"
 
+_STEP_LABELS: dict[str, str] = {
+    "load_context": "📂 Loading PR context & indexing codebase",
+    "security": "🔒 Running security analysis",
+    "bugs": "🐛 Detecting potential bugs",
+    "style": "✨ Checking code style & quality",
+    "error_handling": "⚠️ Analyzing error handling patterns",
+    "test_coverage": "🧪 Checking test coverage",
+    "comment_accuracy": "📝 Reviewing code comments",
+    "verify": "🔍 Cross-verifying findings",
+    "orchestrate": "🎯 Ranking and scoring findings",
+    "generate": "📋 Generating review summary",
+}
+
+_TOTAL_STEPS = len(_STEP_LABELS)
+
 
 def _format_review_comment(
     summary: str,
@@ -157,6 +172,33 @@ async def process_review_job(job: ReviewJob) -> None:
         except Exception as e:
             logger.warning("check_run_update_failed", error=str(e))
 
+    # Per-step progress callback — updates the check run summary as each agent finishes
+    completed_steps: list[str] = []
+
+    async def _on_step(node_name: str, _output: dict) -> None:
+        label = _STEP_LABELS.get(node_name)
+        if not label or not check_run_id:
+            return
+        completed_steps.append(label)
+        step_num = len(completed_steps)
+        lines = [f"✅ {s}" for s in completed_steps]
+        summary_text = "\n".join(lines)
+        try:
+            await gc.update_check_run(
+                owner,
+                repo,
+                check_run_id,
+                {
+                    "status": "in_progress",
+                    "output": {
+                        "title": f"Step {step_num}/{_TOTAL_STEPS} — {label}",
+                        "summary": summary_text,
+                    },
+                },
+            )
+        except Exception:
+            pass
+
     try:
         # Run the LangGraph review pipeline
         result = await run_review(
@@ -168,6 +210,7 @@ async def process_review_job(job: ReviewJob) -> None:
             pr_title=payload.get("pr_title", ""),
             pr_body=payload.get("pr_body", ""),
             review_mode=review_mode,
+            on_node_complete=_on_step,
         )
 
         findings = result.get("final_findings", [])

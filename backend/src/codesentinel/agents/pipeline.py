@@ -571,8 +571,13 @@ async def run_review(
     pr_title: str = "",
     pr_body: str = "",
     review_mode: str = "review",
+    on_node_complete: Any | None = None,
 ) -> dict[str, Any]:
-    """Run the full review pipeline and return results."""
+    """Run the full review pipeline and return results.
+
+    on_node_complete: optional async callable(node_name: str, output: dict)
+    called after each graph node finishes — used for live progress updates.
+    """
     graph = build_review_graph()
 
     initial_state: ReviewState = {
@@ -604,5 +609,25 @@ async def run_review(
         "errors": [],
     }
 
-    result = await graph.ainvoke(initial_state)
-    return result
+    # Fields reduced with operator.add — must be accumulated, not overwritten.
+    _additive_lists = {"raw_findings", "errors"}
+    _additive_ints = {"enabled_agent_count"}
+
+    final_state: dict[str, Any] = dict(initial_state)
+
+    async for event in graph.astream(initial_state, stream_mode="updates"):
+        for node_name, node_output in event.items():
+            for key, value in node_output.items():
+                if key in _additive_lists:
+                    final_state[key] = final_state.get(key, []) + value
+                elif key in _additive_ints:
+                    final_state[key] = final_state.get(key, 0) + value
+                else:
+                    final_state[key] = value
+            if on_node_complete is not None:
+                try:
+                    await on_node_complete(node_name, node_output)
+                except Exception:
+                    pass
+
+    return final_state
