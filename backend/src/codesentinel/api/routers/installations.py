@@ -1,25 +1,30 @@
 """Installations API router."""
 
+import asyncio
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, update, func, desc
+from sqlalchemy import delete, select, update, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from structlog import get_logger
 
 from codesentinel.api.deps import get_github_user_id, get_github_access_token
 from codesentinel.database.models import Installation, InstallationSettings, Review
 from codesentinel.database.session import get_db
 
 router = APIRouter(prefix="/api/installations", tags=["installations"])
+logger = get_logger()
 
 
 async def _auto_claim_installations(
     db: AsyncSession,
     github_user_id: int,
     access_token: str,
-) -> None:
-    """Use GitHub API to find the user's installations and stamp github_user_id on NULL rows."""
+) -> list[int]:
+    """Use the user's OAuth token to discover their installations.
+    Stamps github_user_id on any legacy NULL rows and returns the installation IDs.
+    """
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(
@@ -30,10 +35,10 @@ async def _auto_claim_installations(
                 },
             )
             if resp.status_code != 200:
-                return
+                return []
             installation_ids = [i["id"] for i in resp.json().get("installations", [])]
         if not installation_ids:
-            return
+            return []
         await db.execute(
             update(Installation)
             .where(
@@ -43,8 +48,90 @@ async def _auto_claim_installations(
             .values(github_user_id=github_user_id)
         )
         await db.commit()
+        return installation_ids
     except Exception:
-        pass
+        return []
+
+
+async def _sync_installation_repos(
+    db: AsyncSession,
+    installation_id: int,
+    github_user_id: int,
+) -> None:
+    """Fetch the actual repos accessible to an installation from GitHub and reconcile the DB.
+
+    This handles:
+    - Repos added or removed after the initial install (without relying solely on webhooks)
+    - Installs with 'All repositories' access (webhook payload is empty, API is not)
+    - Missed webhook deliveries
+    """
+    from codesentinel.github.auth import get_github_auth
+
+    try:
+        auth = get_github_auth()
+        token = await auth.get_installation_token(installation_id)
+
+        current_repos: set[str] = set()
+        page = 1
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            while True:
+                resp = await client.get(
+                    "https://api.github.com/installation/repositories",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/vnd.github+json",
+                    },
+                    params={"per_page": 100, "page": page},
+                )
+                if resp.status_code != 200:
+                    return
+                data = resp.json()
+                repos = data.get("repositories", [])
+                current_repos.update(r["full_name"] for r in repos)
+                if len(repos) < 100:
+                    break
+                page += 1
+
+        # Repos currently stored in DB for this installation
+        result = await db.execute(
+            select(Installation.repo_full_name).where(
+                Installation.installation_id == installation_id,
+            )
+        )
+        db_repos: set[str] = {row[0] for row in result.fetchall()}
+
+        added = current_repos - db_repos
+        removed = db_repos - current_repos
+
+        for repo_name in added:
+            db.add(
+                Installation(
+                    installation_id=installation_id,
+                    repo_full_name=repo_name,
+                    github_user_id=github_user_id,
+                    config={},
+                )
+            )
+
+        if removed:
+            await db.execute(
+                delete(Installation).where(
+                    Installation.installation_id == installation_id,
+                    Installation.repo_full_name.in_(removed),
+                )
+            )
+
+        if added or removed:
+            await db.commit()
+            logger.info(
+                "installation_repos_synced",
+                installation_id=installation_id,
+                added=len(added),
+                removed=len(removed),
+            )
+
+    except Exception as exc:
+        logger.warning("installation_repos_sync_failed", installation_id=installation_id, error=str(exc))
 
 
 async def _require_installation_owner(
@@ -74,8 +161,15 @@ async def list_installations(
     """List installations for the authenticated user only."""
     if github_user_id is None:
         return {"installations": []}
+
+    # Discover and claim installations, then sync repos from GitHub API
     if access_token:
-        await _auto_claim_installations(db, github_user_id, access_token)
+        install_ids = await _auto_claim_installations(db, github_user_id, access_token)
+        await asyncio.gather(
+            *[_sync_installation_repos(db, iid, github_user_id) for iid in install_ids],
+            return_exceptions=True,
+        )
+
     result = await db.execute(
         select(Installation)
         .where(Installation.github_user_id == github_user_id)
