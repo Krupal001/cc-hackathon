@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from langchain.text_splitter import Language, RecursiveCharacterTextSplitter
 from sqlalchemy import text
 from structlog import get_logger
 
@@ -12,6 +13,38 @@ from codesentinel.database.session import engine
 
 logger = get_logger()
 _settings = get_settings()
+
+# Map file extension → LangChain Language for semantic-boundary splitting
+_EXT_TO_LANGUAGE: dict[str, Language] = {
+    ".py": Language.PYTHON,
+    ".js": Language.JS,
+    ".ts": Language.TS,
+    ".jsx": Language.JS,
+    ".tsx": Language.TS,
+    ".go": Language.GO,
+    ".rs": Language.RUST,
+    ".java": Language.JAVA,
+    ".rb": Language.RUBY,
+    ".cs": Language.CSHARP,
+}
+
+_CHUNK_SIZE = 1500   # characters (~375 tokens) — fits well within embedding limits
+_CHUNK_OVERLAP = 200  # characters of overlap to preserve cross-boundary context
+
+
+def _make_splitter(ext: str) -> RecursiveCharacterTextSplitter:
+    """Return a language-aware splitter, falling back to generic for unknown extensions."""
+    lang = _EXT_TO_LANGUAGE.get(ext)
+    if lang:
+        return RecursiveCharacterTextSplitter.from_language(
+            language=lang,
+            chunk_size=_CHUNK_SIZE,
+            chunk_overlap=_CHUNK_OVERLAP,
+        )
+    return RecursiveCharacterTextSplitter(
+        chunk_size=_CHUNK_SIZE,
+        chunk_overlap=_CHUNK_OVERLAP,
+    )
 
 
 async def semantic_search(
@@ -110,26 +143,23 @@ async def index_codebase(
             resp.raise_for_status()
             tree = resp.json().get("tree", [])
 
-        code_extensions = {
-            ".py", ".js", ".ts", ".jsx", ".tsx",
-            ".go", ".rs", ".java", ".rb", ".cs",
-        }
         indexed = 0
 
         for item in tree:
             if item["type"] != "blob":
                 continue
             ext = Path(item["path"]).suffix
-            if ext not in code_extensions:
+            if ext not in _EXT_TO_LANGUAGE:
                 continue
 
             try:
                 content = await github_client.get_file_contents(
                     owner, repo, item["path"], ref
                 )
-                lines = content.split("\n")
-                for chunk_idx, i in enumerate(range(0, len(lines), 1000)):
-                    chunk = "\n".join(lines[i : i + 1000])
+                splitter = _make_splitter(ext)
+                chunks = splitter.split_text(content)
+
+                for chunk_idx, chunk in enumerate(chunks):
                     if len(chunk.strip()) < 10:
                         continue
 
@@ -147,6 +177,7 @@ async def index_codebase(
                                     (repo_full_name, commit_sha, file_path,
                                      content_chunk, chunk_index, embedding)
                                 VALUES (:repo, :ref, :path, :chunk, :idx, CAST(:emb AS vector))
+                                ON CONFLICT DO NOTHING
                             """),
                             {
                                 "repo": repo_full_name,
