@@ -44,6 +44,14 @@ _settings = get_settings()
 # ─── State ───────────────────────────────────────────────────────────────────
 
 
+def _merge_tokens(a: dict, b: dict) -> dict:
+    """Reducer that sums input/output token counts across concurrent nodes."""
+    return {
+        "input": a.get("input", 0) + b.get("input", 0),
+        "output": a.get("output", 0) + b.get("output", 0),
+    }
+
+
 class Finding(TypedDict):
     file: str
     line: int
@@ -79,7 +87,7 @@ class ReviewState(TypedDict):
     delta_caption: str
     merge_score: int
     merge_score_reason: str
-    tokens_used: dict
+    tokens_used: Annotated[dict, _merge_tokens]
     cost_usd: float
     enabled_agent_count: Annotated[int, operator.add]
     errors: Annotated[list[str], operator.add]
